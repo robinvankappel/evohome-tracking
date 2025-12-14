@@ -5,7 +5,7 @@ import datetime
 from datetime import datetime
 import time
 import configparser
-from evohomeclient2 import EvohomeClient
+from evohomeclient import EvohomeClient
 import csv
 
 def log(USERNAME, PASSWORD, period=900):
