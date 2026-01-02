@@ -1,20 +1,18 @@
-import os
 import time
-import csv
 import logging
 import configparser
+import csv
 from datetime import datetime
 from evohomeclient import EvohomeClient
 
-# ==================================================
-# CONFIG
-# ==================================================
+# ---------------- CONFIG ----------------
+CONFIG_FILE = "config.ini"
 CSV_FILE = "evohome_data.csv"
 LOG_FILE = "evohome.log"
 
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "600"))     # seconds
-RUN_ONCE = os.getenv("RUN_ONCE", "false").lower() == "true"
-# --------------------------------------------------
+POLL_INTERVAL = 600        # seconds
+BACKOFF_INTERVAL = 300     # seconds
+# --------------------------------------
 
 
 def setup_logging():
@@ -23,22 +21,24 @@ def setup_logging():
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
-    logging.getLogger().addHandler(logging.StreamHandler())
 
 
-def load_credentials():
-    # Priority: ENV → config.ini
-    user = os.getenv("EVOHOME_USERNAME")
-    pwd = os.getenv("EVOHOME_PASSWORD")
+def load_config():
+    import os
 
-    if user and pwd:
-        return user, pwd
+    # Prefer environment variables (for GitHub Actions)
+    username = os.getenv("EVOHOME_USERNAME")
+    password = os.getenv("EVOHOME_PASSWORD")
 
+    if username and password:
+        return username, password
+
+    # Fallback to local config file
     config = configparser.ConfigParser()
-    config.read("config.ini")
+    config.read(CONFIG_FILE)
 
     if "Evohome" not in config:
-        raise RuntimeError("Missing Evohome credentials")
+        raise RuntimeError("Missing [Evohome] section in config.ini")
 
     return config["Evohome"]["Username"], config["Evohome"]["Password"]
 
@@ -47,7 +47,12 @@ def write_rows(rows):
     if not rows:
         return
 
-    file_exists = os.path.exists(CSV_FILE)
+    file_exists = False
+    try:
+        with open(CSV_FILE, "r"):
+            file_exists = True
+    except FileNotFoundError:
+        pass
 
     with open(CSV_FILE, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=rows[0].keys())
@@ -55,40 +60,36 @@ def write_rows(rows):
             writer.writeheader()
         for row in rows:
             writer.writerow(row)
-        f.flush()
+        f.flush()   # ensure immediate write
 
 
 def collect_temperatures(client):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     rows = []
 
-    for zone in client.temperatures():
-        data = dict(zone)
-        data["time"] = timestamp
-        rows.append(data)
+    for room in client.temperatures():
+        row = dict(room)
+        row["time"] = timestamp
+        rows.append(row)
 
     return rows
 
 
 def main():
     setup_logging()
-    user, pwd = load_credentials()
-
-    logging.info("Starting Evohome logger")
-    client = EvohomeClient(user, pwd)
+    username, password = load_config()
+    client = EvohomeClient(username, password)
 
     while True:
         try:
             rows = collect_temperatures(client)
             write_rows(rows)
             logging.info("Logged %d rows", len(rows))
+            time.sleep(POLL_INTERVAL)
+
         except Exception as e:
-            logging.exception("Error during polling: %s", e)
-
-        if RUN_ONCE:
-            break
-
-        time.sleep(POLL_INTERVAL)
+            logging.error("Error during polling: %s", e)
+            time.sleep(BACKOFF_INTERVAL)
 
 
 if __name__ == "__main__":
