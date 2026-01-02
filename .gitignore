@@ -7,6 +7,8 @@
 !EvohomeTemperatureLogging.py
 !requirements.txt
 !config.example.ini
+!.github/
+!.github/**
 
 # Explicitly ignore secrets & data
 config.ini
