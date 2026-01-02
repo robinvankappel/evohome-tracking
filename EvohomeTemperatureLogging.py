@@ -1,18 +1,19 @@
+import os
 import time
+import csv
 import logging
 import configparser
-import csv
 from datetime import datetime
 from evohomeclient import EvohomeClient
 
-# ---------------- CONFIG ----------------
+# ================= CONFIG =================
 CONFIG_FILE = "config.ini"
 CSV_FILE = "evohome_data.csv"
 LOG_FILE = "evohome.log"
 
 POLL_INTERVAL = 600        # seconds
 BACKOFF_INTERVAL = 300     # seconds
-# --------------------------------------
+# ========================================
 
 
 def setup_logging():
@@ -22,16 +23,18 @@ def setup_logging():
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
+    # Force immediate write to disk
+    for handler in logging.getLogger().handlers:
+        handler.flush = handler.stream.flush
+
 
 def load_config():
-    import os
+    # Prefer environment variables (GitHub Actions)
+    user = os.getenv("EVOHOME_USERNAME")
+    pwd = os.getenv("EVOHOME_PASSWORD")
 
-    # Prefer environment variables (for GitHub Actions)
-    username = os.getenv("EVOHOME_USERNAME")
-    password = os.getenv("EVOHOME_PASSWORD")
-
-    if username and password:
-        return username, password
+    if user and pwd:
+        return user, pwd
 
     # Fallback to local config file
     config = configparser.ConfigParser()
@@ -47,12 +50,9 @@ def write_rows(rows):
     if not rows:
         return
 
-    file_exists = False
-    try:
-        with open(CSV_FILE, "r"):
-            file_exists = True
-    except FileNotFoundError:
-        pass
+    os.makedirs(os.path.dirname(CSV_FILE) or ".", exist_ok=True)
+
+    file_exists = os.path.exists(CSV_FILE)
 
     with open(CSV_FILE, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=rows[0].keys())
@@ -60,15 +60,15 @@ def write_rows(rows):
             writer.writeheader()
         for row in rows:
             writer.writerow(row)
-        f.flush()   # ensure immediate write
+        f.flush()
 
 
 def collect_temperatures(client):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     rows = []
 
-    for room in client.temperatures():
-        row = dict(room)
+    for zone in client.temperatures():
+        row = dict(zone)
         row["time"] = timestamp
         rows.append(row)
 

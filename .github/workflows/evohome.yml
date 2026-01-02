@@ -1,8 +1,7 @@
-name: Evohome Temperature Logger
+name: Evohome Logger
 
 on:
   schedule:
-    # Runs every 10 minutes
     - cron: "*/10 * * * *"
   workflow_dispatch:
 
@@ -11,8 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -21,16 +19,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Evohome logger
+      - name: Run Evohome collector
         env:
           EVOHOME_USERNAME: ${{ secrets.EVOHOME_USERNAME }}
           EVOHOME_PASSWORD: ${{ secrets.EVOHOME_PASSWORD }}
-          RUN_ONCE: "true"
-        run: |
-          python EvohomeTemperatureLogging.py
+        run: python EvohomeTemperatureLogging.py
 
       - name: Upload CSV artifact
         uses: actions/upload-artifact@v4
