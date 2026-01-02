@@ -1,84 +1,90 @@
-# Load required libraries
-import requests
-import json
-import datetime
-from datetime import datetime
 import time
+import logging
 import configparser
-from evohomeclient import EvohomeClient
 import csv
+from datetime import datetime
+from evohomeclient import EvohomeClient
 
-def log(USERNAME, PASSWORD, period=900):
-    #initialisation
-    initialisation = 1
+# ---------------- CONFIG ----------------
+CONFIG_FILE = "config.ini"
+CSV_FILE = "evohome_data.csv"
+LOG_FILE = "evohome.log"
+
+POLL_INTERVAL = 600        # seconds
+BACKOFF_INTERVAL = 300     # seconds
+# --------------------------------------
+
+
+def setup_logging():
+    handler = logging.FileHandler(LOG_FILE)
+    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+    handler.flush = handler.stream.flush  # force immediate flush
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+
+    logging.info("Logger initialized")
+
+
+def load_config():
+    config = configparser.ConfigParser()
+    config.read(CONFIG_FILE)
+
+    if "Evohome" not in config:
+        raise RuntimeError("Missing [Evohome] section")
+
+    return config["Evohome"]["Username"], config["Evohome"]["Password"]
+
+
+def write_rows(rows):
+    if not rows:
+        return
+
+    file_exists = False
     try:
-        client = EvohomeClient(USERNAME, PASSWORD)
-    except ValueError:
-        try:
-            client = EvohomeClient(USERNAME, PASSWORD, debug=True)
-        except ValueError:
-            print("Error when connecting to internet, please try again")
+        with open(CSV_FILE, "r"):
+            file_exists = True
+    except FileNotFoundError:
+        pass
 
-    # Infinite loop every X minutes, send temperatures to csv
-    while True:
-    # Get current time and save values to csv
-        try:
-            client = EvohomeClient(USERNAME, PASSWORD)
-            room_data = list(client.temperatures())
-        except:
-            try:
-                client.login()
-                client = EvohomeClient(USERNAME, PASSWORD, debug=True)
-                room_data = list(client.temperatures())
-            except ValueError:
-                print("Error when connecting to internet, please try again")
-        # measurements = list()
-        for room in room_data:
-            if initialisation == 1:
-                labels = list(room.keys())
-                labels.append('time')
-                d = datetime.now().strftime('%Y%m%d  %H%M%S ')
-                filename = d + 'temperature.csv'
-                with open(filename, 'w') as f:
-                    writer = csv.DictWriter(f, fieldnames=labels)
-                    writer.writeheader()
-                initialisation = 0
-            # print(device)
-            t = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-            room['time'] = t
-        try:
-            with open(filename, 'a') as f:
-                writer = csv.DictWriter(f, fieldnames=labels)
-                for room in room_data:
-                    writer.writerow(room)
-        except IOError:
-            print("I/O error")
+    with open(CSV_FILE, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        if not file_exists:
+            writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+        f.flush()  # <-- force flush to disk
 
-        print("Going to sleep for"+str(period))
-        time.sleep(period)
 
-    return None
+def collect_temperatures(client):
+    rows = []
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    for zone in client.temperatures():
+        row = dict(zone)
+        row["time"] = timestamp
+        rows.append(row)
+
+    return rows
+
 
 def main():
-    #config
-    Config = configparser.ConfigParser()
-    Config.read("config.ini")
+    setup_logging()
+    username, password = load_config()
+    client = EvohomeClient(username, password)
 
-    # stream_ids_array = []
-    # for name, value in Config.items('Rooms'):
-    #     stream_ids_array.append(value)
+    while True:
+        try:
+            rows = collect_temperatures(client)
+            write_rows(rows)
+            logging.info("Wrote %d rows", len(rows))
+            time.sleep(POLL_INTERVAL)
 
-    # Set your login details in the 2 fields below
-    USERNAME = Config.get('Evohome', 'Username')
-    PASSWORD = Config.get('Evohome', 'Password')
+        except Exception as e:
+            logging.error("Error during polling: %s", e)
+            time.sleep(BACKOFF_INTERVAL)
 
-    try:
-        log(USERNAME, PASSWORD)
-    except:
-        print("Lets wait and restart..")
-        time.sleep(300)
-        log(USERNAME, PASSWORD)
-    return None
 
 if __name__ == "__main__":
     main()
