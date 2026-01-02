@@ -4,17 +4,18 @@ import csv
 import logging
 import configparser
 from datetime import datetime
+import pytz
 from evohomeclient import EvohomeClient
-IS_GITHUB = os.getenv("GITHUB_ACTIONS") == "true"
 
-# ================= CONFIG =================
+# ---------------- CONFIG ----------------
 CONFIG_FILE = "config.ini"
 CSV_FILE = "evohome_data.csv"
 LOG_FILE = "evohome.log"
 
 POLL_INTERVAL = 600        # seconds
 BACKOFF_INTERVAL = 300     # seconds
-# ========================================
+TIMEZONE = "Europe/Amsterdam"
+# --------------------------------------
 
 
 def setup_logging():
@@ -24,20 +25,18 @@ def setup_logging():
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
-    # Force immediate write to disk
+    # Ensure logs are flushed immediately
     for handler in logging.getLogger().handlers:
         handler.flush = handler.stream.flush
 
 
 def load_config():
-    # Prefer environment variables (GitHub Actions)
     user = os.getenv("EVOHOME_USERNAME")
     pwd = os.getenv("EVOHOME_PASSWORD")
 
     if user and pwd:
         return user, pwd
 
-    # Fallback to local config file
     config = configparser.ConfigParser()
     config.read(CONFIG_FILE)
 
@@ -65,9 +64,10 @@ def write_rows(rows):
 
 
 def collect_temperatures(client):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    rows = []
+    tz = pytz.timezone(TIMEZONE)
+    timestamp = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
 
+    rows = []
     for zone in client.temperatures():
         row = dict(zone)
         row["time"] = timestamp
@@ -75,28 +75,23 @@ def collect_temperatures(client):
 
     return rows
 
+
 def main():
     setup_logging()
     username, password = load_config()
     client = EvohomeClient(username, password)
 
-    if IS_GITHUB:
-        # One-shot run for GitHub Actions
-        rows = collect_temperatures(client)
-        write_rows(rows)
-        logging.info("Single run completed (GitHub Actions)")
-        return
-
-    # Local mode: continuous logging
     while True:
         try:
             rows = collect_temperatures(client)
             write_rows(rows)
             logging.info("Logged %d rows", len(rows))
             time.sleep(POLL_INTERVAL)
+
         except Exception as e:
             logging.error("Error during polling: %s", e)
             time.sleep(BACKOFF_INTERVAL)
+
 
 if __name__ == "__main__":
     main()
