@@ -1,0 +1,14 @@
+# Ignore everything by default
+*
+
+# Allow these files
+!.gitignore
+!README.md
+!EvohomeTemperatureLogging.py
+!requirements.txt
+!config.example.ini
+
+# Explicitly ignore secrets & data
+config.ini
+*.csv
+*.xlsx
