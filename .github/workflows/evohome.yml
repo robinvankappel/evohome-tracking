@@ -2,7 +2,7 @@ name: Evohome Logger
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/10 * * * *"   # every 15 minutes
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +14,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed to push back changes
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -25,14 +28,17 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run Evohome collector
+      - name: Run Evohome logger
         env:
           EVOHOME_USERNAME: ${{ secrets.EVOHOME_USERNAME }}
           EVOHOME_PASSWORD: ${{ secrets.EVOHOME_PASSWORD }}
-        run: python EvohomeTemperatureLogging.py
+        run: |
+          python EvohomeTemperatureLogging.py
 
-      - name: Upload CSV artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: evohome-data
-          path: evohome_data.csv
+      - name: Commit updated CSV
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add evohome_data.csv
+          git commit -m "Update evohome data" || echo "No changes to commit"
+          git push
