@@ -1,6 +1,11 @@
 # Ignore everything by default
 *
 
+# Explicitly ignore secrets & data
+config.ini
+*.csv
+*.xlsx
+
 # Allow these files
 !.gitignore
 !README.md
@@ -9,8 +14,4 @@
 !config.example.ini
 !.github/
 !.github/**
-
-# Explicitly ignore secrets & data
-config.ini
-*.csv
-*.xlsx
+!evohome_data.csv
