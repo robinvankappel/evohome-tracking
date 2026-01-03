@@ -2,22 +2,20 @@ name: Evohome Logger
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # every 15 minutes
+    # Run every 15 minutes (adjust if needed to avoid 429s)
+    - cron: "*/15 * * * *"
   workflow_dispatch:
-
-concurrency:
-  group: evohome-logger
-  cancel-in-progress: true
 
 jobs:
   collect:
     runs-on: ubuntu-latest
+    timeout-minutes: 5   # hard safety stop
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # needed to push back changes
+          fetch-depth: 0   # required to commit back CSV
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,7 +26,7 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run Evohome logger
+      - name: Run Evohome logger (one-shot)
         env:
           EVOHOME_USERNAME: ${{ secrets.EVOHOME_USERNAME }}
           EVOHOME_PASSWORD: ${{ secrets.EVOHOME_PASSWORD }}
@@ -39,6 +37,12 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add evohome_data.csv
-          git commit -m "Update evohome data" || echo "No changes to commit"
-          git push
+
+          # Only commit if CSV exists and changed
+          if [ -f evohome_data.csv ]; then
+            git add evohome_data.csv
+            git commit -m "Update evohome data" || echo "No changes to commit"
+            git push
+          else
+            echo "CSV not created (likely due to API rate limit)"
+          fi

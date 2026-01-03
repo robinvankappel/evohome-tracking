@@ -81,13 +81,26 @@ def main():
     username, password = load_config()
     client = EvohomeClient(username, password)
 
+    is_github = os.getenv("GITHUB_ACTIONS") == "true"
+
+    # GitHub Actions: run once and exit
+    if is_github:
+        try:
+            rows = collect_temperatures(client)
+            write_rows(rows)
+            logging.info("Logged %d rows (GitHub one-shot)", len(rows))
+        except Exception as e:
+            logging.error("Error during polling (GitHub): %s", e)
+            raise
+        return
+
+    # Local mode: continuous logging
     while True:
         try:
             rows = collect_temperatures(client)
             write_rows(rows)
             logging.info("Logged %d rows", len(rows))
             time.sleep(POLL_INTERVAL)
-
         except Exception as e:
             logging.error("Error during polling: %s", e)
             time.sleep(BACKOFF_INTERVAL)
